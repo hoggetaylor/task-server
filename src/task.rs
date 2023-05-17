@@ -52,6 +52,34 @@ pub enum State {
 
 impl Task {
 
+    pub async fn try_claim_task(conn: &Conn) -> Option<Task> {
+        sqlx::query_as::<_, Task>(
+            "UPDATE tasks SET task_state='Running' WHERE id = (
+                SELECT id FROM tasks WHERE
+                    task_state='Scheduled' AND
+                    execution_time <= now()
+                ORDER BY execution_time
+                LIMIT 1
+            ) RETURNING *"
+        ).fetch_optional(conn).await.unwrap()
+    }
+
+    pub async fn mark_complete(&mut self, conn: &Conn) {
+        sqlx::query("UPDATE tasks SET task_state='Completed' WHERE id = $1")
+            .bind(self.id)
+            .execute(conn).await.unwrap();
+        self.task_state = State::Completed;
+    }
+
+    pub async fn reschedule(&mut self, conn: &Conn, when: chrono::DateTime<Utc>) {
+        sqlx::query("UPDATE tasks SET task_state='Requested', execution_time=$1 WHERE id = $2")
+            .bind(when)
+            .bind(self.id)
+            .execute(conn).await.unwrap();
+        self.task_state = State::Scheduled;
+        self.execution_time = when;
+    }
+
     pub async fn create(conn: &Conn, create: CreateTask) -> Task {
         sqlx::query_as::<_, Task>("INSERT INTO tasks (execution_time, task_type) VALUES ($1, $2) RETURNING *")
             .bind(create.execution_time)
