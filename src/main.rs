@@ -7,7 +7,6 @@ mod worker;
 
 #[tokio::main]
 async fn main() {
-    tracing_subscriber::fmt::init();
     let conn = Arc::new(
         db::connect("postgres://taskadmin:taskadmin@localhost/task-server").await
     );
